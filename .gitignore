@@ -24,6 +24,12 @@ node_modules/
 # OS specific
 .DS_Store
 
+# SSL Certificates
+*.pem
+
+# Database files
+*.db
+
 # Task files
 # tasks.json
-# tasks/ 
+# tasks/
