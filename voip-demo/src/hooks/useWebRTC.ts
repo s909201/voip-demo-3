@@ -24,6 +24,8 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
   };
 
   useEffect(() => {
+    if (!socket) return;
+
     peerConnection.current = new RTCPeerConnection(servers);
 
     peerConnection.current.ontrack = (event) => {
@@ -31,15 +33,25 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
     };
 
     peerConnection.current.onicecandidate = (event) => {
-      if (event.candidate && socket) {
-        socket.send(JSON.stringify({ type: 'candidate', candidate: event.candidate, target_voip_id: currentTarget }));
+      console.log('onicecandidate event:', event);
+      if (event.candidate) {
+        if (socket) {
+          const target = callerId || currentTarget;
+          if (target) {
+            console.log('Sending candidate to:', target);
+            socket.send(JSON.stringify({ type: 'candidate', candidate: event.candidate, target_voip_id: target }));
+          }
+        }
+      } else {
+        console.log('End of candidates.');
       }
     };
 
+    const pc = peerConnection.current;
     return () => {
-      peerConnection.current?.close();
+      pc?.close();
     };
-  }, [socket, currentTarget]);
+  }, [socket]);
 
   const startCall = async (targetVoipId: string) => {
     if (!peerConnection.current) return;
@@ -51,6 +63,8 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
 
     const offer = await peerConnection.current.createOffer();
     await peerConnection.current.setLocalDescription(offer);
+    console.log('ICE Gathering State after setLocalDescription (offer):', peerConnection.current.iceGatheringState);
+    console.log('ICE Connection State after setLocalDescription (offer):', peerConnection.current.iceConnectionState);
 
     if (socket) {
       socket.send(JSON.stringify({ type: 'offer', offer, target_voip_id: targetVoipId }));
@@ -59,8 +73,9 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
 
   const hangUp = () => {
     stopRecording();
-    if (socket && (callerId || currentTarget)) {
-      socket.send(JSON.stringify({ type: 'hang-up', target_voip_id: callerId || currentTarget }));
+    const target = callerId || currentTarget;
+    if (socket && target) {
+      socket.send(JSON.stringify({ type: 'hang-up', target_voip_id: target }));
     }
     if (peerConnection.current) {
       peerConnection.current.close();
@@ -85,32 +100,39 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
   const answerCall = async () => {
     if (!peerConnection.current || !incomingOffer.current || !callerId) return;
 
-    await peerConnection.current.setRemoteDescription(new RTCSessionDescription(incomingOffer.current));
-
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     setLocalStream(stream);
     stream.getTracks().forEach(track => peerConnection.current!.addTrack(track, stream));
 
+    await peerConnection.current.setRemoteDescription(new RTCSessionDescription(incomingOffer.current));
+
     const answer = await peerConnection.current.createAnswer();
     await peerConnection.current.setLocalDescription(answer);
+    console.log('ICE Gathering State after setLocalDescription (answer):', peerConnection.current.iceGatheringState);
+    console.log('ICE Connection State after setLocalDescription (answer):', peerConnection.current.iceConnectionState);
 
     if (socket) {
       socket.send(JSON.stringify({ type: 'answer', answer, target_voip_id: callerId }));
     }
     setCallState('connected');
     incomingOffer.current = null;
-    setCallerId(null);
   };
 
   const handleReceiveAnswer = async (answer: RTCSessionDescriptionInit) => {
     if (peerConnection.current) {
       await peerConnection.current.setRemoteDescription(new RTCSessionDescription(answer));
+      setCallState('connected');
     }
   };
 
   const handleReceiveCandidate = async (candidate: RTCIceCandidateInit) => {
+    console.log('Received candidate:', candidate);
     if (peerConnection.current) {
-      await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
+      try {
+        await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (e) {
+        console.error('Error adding received ice candidate', e);
+      }
     }
   };
 

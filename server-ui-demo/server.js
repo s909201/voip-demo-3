@@ -118,6 +118,10 @@ const interval = setInterval(() => {
 
 wss.on('connection', (ws, req) => {
   const ip = req.socket.remoteAddress;
+  if (ip === '::1') {
+    ws.terminate();
+    return;
+  }
   const time = new Date().toLocaleString();
   console.log(`[${time}] 客戶端已連線，來源 IP: ${ip}`);
   ws.isAlive = true;
@@ -142,39 +146,52 @@ wss.on('connection', (ws, req) => {
         break;
       case 'offer': {
         const time = new Date().toLocaleString();
-        console.log(`[${time}] 撥號: ${ws.voip_id} (${ip}) -> ${data.target_voip_id}`);
+        console.log(`[${time}] [SIGNALING] offer from ${ws.voip_id} to ${data.target_voip_id}`);
+        console.log(JSON.stringify(data.offer, null, 2));
         const targetWs = onlineUsers.get(data.target_voip_id);
         if (targetWs) {
           const messageWithSender = { ...data, sender_voip_id: ws.voip_id };
           targetWs.send(JSON.stringify(messageWithSender));
+        } else {
+          console.log(`[${time}] [SIGNALING] Target user ${data.target_voip_id} not found.`);
         }
         break;
       }
       case 'answer': {
         const time = new Date().toLocaleString();
-        console.log(`[${time}] 接聽: ${ws.voip_id} (${ip}) -> ${data.target_voip_id}`);
+        console.log(`[${time}] [SIGNALING] answer from ${ws.voip_id} to ${data.target_voip_id}`);
+        console.log(JSON.stringify(data.answer, null, 2));
         const targetWs = onlineUsers.get(data.target_voip_id);
         if (targetWs) {
           const messageWithSender = { ...data, sender_voip_id: ws.voip_id };
           targetWs.send(JSON.stringify(messageWithSender));
+        } else {
+          console.log(`[${time}] [SIGNALING] Target user ${data.target_voip_id} not found.`);
         }
         break;
       }
       case 'hang-up': {
         const time = new Date().toLocaleString();
-        console.log(`[${time}] 掛斷: ${ws.voip_id} (${ip}) -> ${data.target_voip_id}`);
+        console.log(`[${time}] [SIGNALING] hang-up from ${ws.voip_id} to ${data.target_voip_id}`);
         const targetWs = onlineUsers.get(data.target_voip_id);
         if (targetWs) {
           const messageWithSender = { ...data, sender_voip_id: ws.voip_id };
           targetWs.send(JSON.stringify(messageWithSender));
+        } else {
+          console.log(`[${time}] [SIGNALING] Target user ${data.target_voip_id} not found.`);
         }
         break;
       }
       case 'candidate': {
+        const time = new Date().toLocaleString();
+        console.log(`[${time}] [SIGNALING] candidate from ${ws.voip_id} to ${data.target_voip_id}`);
+        console.log(JSON.stringify(data.candidate, null, 2));
         const targetWs = onlineUsers.get(data.target_voip_id);
         if (targetWs) {
           const messageWithSender = { ...data, sender_voip_id: ws.voip_id };
           targetWs.send(JSON.stringify(messageWithSender));
+        } else {
+          console.log(`[${time}] [SIGNALING] Target user ${data.target_voip_id} not found.`);
         }
         break;
       }

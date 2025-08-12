@@ -22,11 +22,12 @@ const CallView: React.FC = () => {
       return;
     }
     setConnectionStatus('connecting');
-    const ws = new WebSocket(`wss://${window.location.hostname}:8443`);
+    const ws = new WebSocket(`wss://192.168.0.75:8443`);
 
     ws.onopen = () => {
       console.log('WebSocket connected');
       ws.send(JSON.stringify({ type: 'login', voip_id: username }));
+      ws.send(JSON.stringify({ type: 'request-user-list' }));
       setConnectionStatus('connected');
     };
 
@@ -120,7 +121,7 @@ const CallView: React.FC = () => {
                 setCurrentTarget(target);
                 startCall(target);
               }
-            }} 
+            }}
             className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-full transition duration-300 disabled:bg-gray-500" 
             disabled={connectionStatus !== 'connected' || callState !== 'idle'}
           >
