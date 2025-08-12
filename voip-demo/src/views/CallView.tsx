@@ -78,7 +78,9 @@ const CallView: React.FC = () => {
       return;
     }
     setConnectionStatus('connecting');
-    const ws = new WebSocket(`wss://192.168.0.75:8443`);
+    // 強制使用 WSS 協議連接到後端服務器
+    const wsUrl = `wss://${window.location.hostname}:8443`;
+    const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
       console.log('WebSocket connected');

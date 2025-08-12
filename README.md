@@ -42,33 +42,49 @@ cd voip-demo-3
 
 ### 3. 產生 SSL 憑證
 
-後端伺服器和 Vite 開發伺服器都需要 HTTPS 才能讓 WebRTC 正常運作。由於憑證檔案 (`.pem`) 已被 `.gitignore` 排除，您需要手動產生它們。
+**重要：** 由於 WebRTC 需要 HTTPS 環境才能存取麥克風，因此前端和後端都必須使用 SSL 憑證。
 
-請在終端機中，進入 `server-ui-demo` 目錄並執行以下 `openssl` 指令：
+請在終端機中，進入 `server-ui-demo` 目錄並執行以下 `openssl` 指令來產生包含正確 IP 地址的 SSL 憑證：
 
 ```bash
 cd server-ui-demo
 
-openssl req -x509 -newkey rsa:2048 -nodes -sha256 -subj '/CN=localhost' \
-  -keyout cert-key.pem -out cert.pem
+# 刪除舊的憑證檔案（如果存在）
+rm -f cert.pem cert-key.pem
+
+# 產生新的 SSL 憑證，包含本機和區域網路 IP
+openssl req -x509 -newkey rsa:4096 -keyout cert-key.pem -out cert.pem -days 365 -nodes \
+  -subj "/C=TW/ST=Taiwan/L=Taipei/O=VoIP Demo/OU=IT Department/CN=192.168.0.75" \
+  -addext "subjectAltName=DNS:localhost,DNS:*.localhost,IP:127.0.0.1,IP:192.168.0.75,IP:192.168.248.1,IP:192.168.253.1,IP:172.20.80.1"
 ```
 
-這個指令會在 `server-ui-demo` 目錄下產生 `cert-key.pem` 和 `cert.pem` 兩個檔案。在執行過程中，您不需要輸入任何額外資訊。
+**Windows PowerShell 用戶請使用：**
+```powershell
+cd server-ui-demo
 
-*(註：`localhost-key.pem` 和 `localhost.pem` 是舊的憑證檔案，目前專案已不再使用，您可以忽略它們。)*
+# 刪除舊的憑證檔案（如果存在）
+Remove-Item cert.pem, cert-key.pem -Force -ErrorAction SilentlyContinue
+
+# 產生新的 SSL 憑證
+openssl req -x509 -newkey rsa:4096 -keyout cert-key.pem -out cert.pem -days 365 -nodes -subj "/C=TW/ST=Taiwan/L=Taipei/O=VoIP Demo/OU=IT Department/CN=192.168.0.75" -addext "subjectAltName=DNS:localhost,DNS:*.localhost,IP:127.0.0.1,IP:192.168.0.75,IP:192.168.248.1,IP:192.168.253.1,IP:172.20.80.1"
+```
+
+這個指令會在 `server-ui-demo` 目錄下產生 `cert-key.pem` 和 `cert.pem` 兩個檔案。憑證包含了多個 IP 地址，確保在不同網路環境下都能正常工作。
 
 ### 4. 安裝依賴套件
 
 專案分為前端和後端兩個部分，都需要安裝各自的依賴套件。
 
--   **安裝後端依賴套件 (在專案根目錄執行):**
+-   **安裝後端依賴套件：**
     ```bash
-    npm install --prefix server-ui-demo
+    cd server-ui-demo
+    npm install
     ```
 
--   **安裝前端依賴套件 (在專案根目錄執行):**
+-   **安裝前端依賴套件：**
     ```bash
-    npm install --prefix voip-demo
+    cd ../voip-demo
+    npm install
     ```
 
 ### 5. 初始化資料庫
@@ -79,21 +95,93 @@ openssl req -x509 -newkey rsa:2048 -nodes -sha256 -subj '/CN=localhost' \
 
 您需要開啟**兩個**終端機視窗，一個用於啟動後端，另一個用於啟動前端。
 
--   **啟動後端伺服器 (在專案根目錄執行):**
+-   **啟動後端伺服器：**
     ```bash
-    npm run dev --prefix server-ui-demo
+    cd server-ui-demo
+    npm start
     ```
-    您應該會看到 `伺服器正在 https://localhost:8443 上運行` 的訊息。
+    您應該會看到以下訊息：
+    ```
+    伺服器正在 https://0.0.0.0:8443 上運行
+    可透過以下網址存取:
+      - https://localhost:8443
+      - https://192.168.0.75:8443
+    ```
 
--   **啟動前端開發伺服器 (在專案根目錄執行):**
+-   **啟動前端開發伺服器：**
     ```bash
-    npm run dev --prefix voip-demo
+    cd voip-demo
+    npm run dev
     ```
-    您應該會看到 Vite 啟動的訊息，並提供一個本地網址 (如 `https://localhost:5173/`) 和一個網路網址 (如 `https://192.168.x.x:5173/`)。
+    您應該會看到 Vite 啟動的訊息，並提供一個本地網址和多個網路網址：
+    ```
+    ➜  Local:   https://localhost:5173/
+    ➜  Network: https://192.168.0.75:5173/
+    ➜  Network: https://192.168.248.1:5173/
+    ```
 
 ### 7. 開始使用
 
-1.  在您的 PC 瀏覽器上開啟 Vite 提供的**本地網址** (例如 `https://localhost:5173/`)。
-2.  在您的手機瀏覽器上，開啟 Vite 提供的**網路網址** (例如 `https://192.168.x.x:5173/`)。
-3.  首次開啟時，瀏覽器可能會警告憑證不受信任，請選擇「繼續前往」或「信任此憑證」。
-4.  在兩邊的頁面上分別輸入不同的使用者名稱並連線，即可開始測試通話。
+1.  **接受 SSL 憑證：** 首次開啟時，瀏覽器會警告憑證不受信任（因為是自簽名憑證）。請點擊「進階」→「繼續前往資料」來接受憑證。
+
+2.  **測試連線：**
+    - 在您的 PC 瀏覽器上開啟 `https://localhost:5173/` 或 `https://192.168.0.75:5173/`
+    - 在您的手機瀏覽器上開啟 `https://192.168.0.75:5173/`（使用您的實際 IP 地址）
+
+3.  **開始通話：**
+    - 在兩邊的頁面上分別輸入不同的使用者名稱並點擊「連線」
+    - 連線成功後，您會在聯絡人列表中看到其他在線使用者
+    - 選擇聯絡人並點擊「撥號」開始通話
+
+## 故障排除
+
+### SSL 憑證問題
+如果遇到 WebSocket 連線失敗（`ERR_CERT_AUTHORITY_INVALID`），請確保：
+1. 已正確產生 SSL 憑證
+2. 前端和後端都重新啟動
+3. 瀏覽器已接受自簽名憑證
+
+### 網路連線問題
+如果無法在不同設備間建立連線：
+1. 確保所有設備都在同一個區域網路
+2. 檢查防火牆設定，確保允許 8443 和 5173 端口
+3. 確認 IP 地址是否正確
+
+### 麥克風權限
+如果無法存取麥克風：
+1. 確保使用 HTTPS 連線（HTTP 無法存取麥克風）
+2. 在瀏覽器中允許麥克風權限
+3. 檢查系統麥克風設定
+
+## 專案結構
+
+```
+voip-demo-3/
+├── server-ui-demo/          # 後端伺服器
+│   ├── server.js           # 主要伺服器檔案
+│   ├── cert.pem            # SSL 憑證（需要產生）
+│   ├── cert-key.pem        # SSL 私鑰（需要產生）
+│   └── src/
+│       └── database.js     # 資料庫設定
+├── voip-demo/              # 前端應用程式
+│   ├── src/
+│   │   ├── views/
+│   │   │   └── CallView.tsx    # 主要通話介面
+│   │   ├── hooks/
+│   │   │   └── useWebRTC.ts    # WebRTC 邏輯
+│   │   └── services/
+│   │       └── api.ts          # API 服務
+│   └── vite.config.ts      # Vite 配置（包含 SSL 設定）
+└── README.md
+```
+
+## 開發說明
+
+- 前端使用 Vite 開發伺服器，支援熱重載
+- 後端使用 Express 和 WebSocket 處理訊號交換
+- WebRTC 使用 Google 的 STUN 伺服器和 OpenRelay 的 TURN 伺服器
+- 資料庫使用 SQLite 儲存通話歷史記錄
+
+## 授權
+
+此專案僅供學習和開發用途。

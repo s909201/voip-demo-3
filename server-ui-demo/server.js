@@ -97,8 +97,11 @@ const formatIp = (ip) => {
   return ip;
 };
 
-server.listen(PORT, () => {
-  console.log(`伺服器正在 https://localhost:${PORT} 上運行`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`伺服器正在 https://0.0.0.0:${PORT} 上運行`);
+  console.log(`可透過以下網址存取:`);
+  console.log(`  - https://localhost:${PORT}`);
+  console.log(`  - https://192.168.0.75:${PORT}`);
 });
 
 const onlineUsers = new Map();
