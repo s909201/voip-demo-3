@@ -1,8 +1,7 @@
 import { defineConfig } from 'vite'
 import type { ViteDevServer } from 'vite'
 import react from '@vitejs/plugin-react'
-import fs from 'fs'
-import path from 'path'
+import basicSsl from '@vitejs/plugin-basic-ssl'
 import { WebSocketServer, WebSocket } from 'ws'
 
 const logPlugin = () => {
@@ -22,13 +21,9 @@ const logPlugin = () => {
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react(), logPlugin()],
+  plugins: [react(), logPlugin(), basicSsl()],
   server: {
     host: true, // 允許來自區域網路的連線
-    https: {
-      key: fs.readFileSync(path.resolve(__dirname, '../server-ui-demo/cert-key.pem')),
-      cert: fs.readFileSync(path.resolve(__dirname, '../server-ui-demo/cert.pem')),
-    },
     proxy: {
       '/api': {
         target: 'https://localhost:8443',

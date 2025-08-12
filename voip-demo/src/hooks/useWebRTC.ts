@@ -14,11 +14,21 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
   const audioChunks = useRef<Blob[]>([]);
   const callId = useRef<string | null>(null);
   const incomingOffer = useRef<RTCSessionDescriptionInit | null>(null);
+  const candidateQueue = useRef<RTCIceCandidateInit[]>([]);
 
   const servers = {
     iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
       {
-        urls: 'stun:stun.l.google.com:19302',
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
       },
     ],
   };
@@ -91,7 +101,7 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
     }
   }, [localStream, remoteStream]);
 
-  const initializePeerConnection = useCallback(() => {
+  const initializePeerConnection = useCallback((targetVoipId: string) => {
     if (peerConnection.current) {
       peerConnection.current.close();
     }
@@ -108,12 +118,9 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
     pc.onicecandidate = (event) => {
       const time = new Date().toLocaleString();
       if (event.candidate) {
-        if (socket) {
-          const target = callerId || currentTarget;
-          if (target) {
-            console.log(`[${time}] [SIGNALING] Sending candidate to: ${target}`);
-            socket.send(JSON.stringify({ type: 'candidate', candidate: event.candidate, target_voip_id: target }));
-          }
+        if (socket && targetVoipId) {
+          console.log(`[${time}] [SIGNALING] Sending candidate to: ${targetVoipId}`);
+          socket.send(JSON.stringify({ type: 'candidate', candidate: event.candidate, target_voip_id: targetVoipId }));
         }
       } else {
         console.log(`[${time}] [WebRTC] End of candidates.`);
@@ -131,10 +138,10 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
         hangUp(true);
       }
     };
-  }, [socket, callerId, currentTarget, hangUp, startRecording]);
+  }, [socket, hangUp, startRecording]);
 
   const startCall = async (targetVoipId: string) => {
-    initializePeerConnection();
+    initializePeerConnection(targetVoipId);
     if (!peerConnection.current) return;
 
     callId.current = `${username}-${targetVoipId}-${Date.now()}`;
@@ -165,7 +172,7 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
   const answerCall = async () => {
     if (!incomingOffer.current || !callerId) return;
 
-    initializePeerConnection();
+    initializePeerConnection(callerId);
     if (!peerConnection.current) return;
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
@@ -173,6 +180,13 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
     stream.getTracks().forEach(track => peerConnection.current!.addTrack(track, stream));
 
     await peerConnection.current.setRemoteDescription(new RTCSessionDescription(incomingOffer.current));
+
+    while(candidateQueue.current.length > 0) {
+      const candidate = candidateQueue.current.shift();
+      if (candidate) {
+        await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+    }
 
     const answer = await peerConnection.current.createAnswer();
     await peerConnection.current.setLocalDescription(answer);
@@ -191,19 +205,30 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
       const time = new Date().toLocaleString();
       console.log(`[${time}] [SIGNALING] Received answer from: ${callerId || currentTarget}`);
       await peerConnection.current.setRemoteDescription(new RTCSessionDescription(answer));
+      
+      while(candidateQueue.current.length > 0) {
+        const candidate = candidateQueue.current.shift();
+        if (candidate) {
+          await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
+        }
+      }
+
       setCallState('connected');
     }
   };
 
   const handleReceiveCandidate = async (candidate: RTCIceCandidateInit) => {
-    if (peerConnection.current && peerConnection.current.signalingState !== 'closed') {
-      const time = new Date().toLocaleString();
-      console.log(`[${time}] [SIGNALING] Received candidate from: ${callerId || currentTarget}`);
+    const time = new Date().toLocaleString();
+    console.log(`[${time}] [SIGNALING] Received candidate from: ${callerId || currentTarget}`);
+    if (peerConnection.current && peerConnection.current.remoteDescription) {
       try {
         await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
       } catch (e) {
         console.error(`[${time}] [WebRTC] Error adding received ice candidate`, e);
       }
+    } else {
+      console.log(`[${time}] [WebRTC] Queuing candidate because remote description is not set yet.`);
+      candidateQueue.current.push(candidate);
     }
   };
 
