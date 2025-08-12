@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { uploadRecording } from '../services/api';
 
 const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: string) => {
@@ -9,6 +9,7 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [callState, setCallState] = useState('idle'); // idle, calling, incoming, connected
   const [callerId, setCallerId] = useState<string | null>(null);
+  const [isCaller, setIsCaller] = useState<boolean>(false); // 追蹤是否為發起通話方
   const peerConnection = useRef<RTCPeerConnection | null>(null);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
@@ -64,40 +65,68 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
     setRemoteStream(null);
     setCallState('idle');
     setCallerId(null);
+    setIsCaller(false); // 重置發起通話標記
     incomingOffer.current = null;
   }, [socket, callerId, currentTarget, localStream]);
 
   const startRecording = useCallback(() => {
-    if (localStream && remoteStream) {
+    const time = new Date().toLocaleString();
+    console.log(`[${time}] [RECORDING] Attempting to start recording. LocalStream: ${!!localStream}, RemoteStream: ${!!remoteStream}, CallId: ${callId.current}, IsCaller: ${isCaller}`);
+    
+    if (localStream && remoteStream && callId.current) {
       const combinedStream = new MediaStream([...localStream.getTracks(), ...remoteStream.getTracks()]);
-      mediaRecorder.current = new MediaRecorder(combinedStream);
+      
+      // 使用 WAV 格式錄音
+      const options = {
+        mimeType: 'audio/webm;codecs=opus'
+      };
+      
+      mediaRecorder.current = new MediaRecorder(combinedStream, options);
       mediaRecorder.current.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunks.current.push(event.data);
+          console.log(`[${new Date().toLocaleString()}] [RECORDING] Audio chunk received, size: ${event.data.size}`);
         }
       };
       mediaRecorder.current.onstop = async () => {
         const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' });
         audioChunks.current = [];
-        if (callId.current) {
-          setIsUploading(true);
-          setUploadSuccess(null);
-          setUploadError(null);
-          try {
-            const response = await uploadRecording(audioBlob, callId.current);
-            if (!response.ok) {
-              throw new Error('Upload failed');
+        console.log(`[${new Date().toLocaleString()}] [RECORDING] Recording stopped, blob size: ${audioBlob.size}, callId: ${callId.current}, isCaller: ${isCaller}`);
+        
+        if (callId.current && audioBlob.size > 0) {
+          // 雙方都錄音，但只有發起方上傳
+          if (isCaller) {
+            setIsUploading(true);
+            setUploadSuccess(null);
+            setUploadError(null);
+            try {
+              console.log(`[${new Date().toLocaleString()}] [RECORDING] Uploading audio as caller...`);
+              const response = await uploadRecording(audioBlob, callId.current, username, callerId || currentTarget);
+              if (!response.ok) {
+                throw new Error('Upload failed');
+              }
+              console.log(`[${new Date().toLocaleString()}] [RECORDING] Upload successful`);
+              setUploadSuccess(true);
+            } catch (error) {
+              console.error(`[${new Date().toLocaleString()}] [RECORDING] Upload failed:`, error);
+              setUploadSuccess(false);
+              setUploadError(error instanceof Error ? error.message : 'Unknown error');
+            } finally {
+              setIsUploading(false);
             }
-            setUploadSuccess(true);
-          } catch (error) {
-            setUploadSuccess(false);
-            setUploadError(error instanceof Error ? error.message : 'Unknown error');
-          } finally {
-            setIsUploading(false);
+          } else {
+            console.log(`[${new Date().toLocaleString()}] [RECORDING] Recording saved locally (receiver side)`);
+            // 接聽方可以在這裡保存本地備份，但不上傳
+            // 如果需要，可以實現本地儲存邏輯
           }
+        } else {
+          console.log(`[${new Date().toLocaleString()}] [RECORDING] No audio data to save`);
         }
       };
       mediaRecorder.current.start();
+      console.log(`[${time}] [RECORDING] Recording started successfully`);
+    } else {
+      console.log(`[${time}] [RECORDING] Cannot start recording - missing requirements`);
     }
   }, [localStream, remoteStream]);
 
@@ -108,6 +137,9 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
     
     const pc = new RTCPeerConnection(servers);
     peerConnection.current = pc;
+    
+    // 生成 callId
+    callId.current = `${username}-${targetVoipId}-${Date.now()}`;
 
     pc.ontrack = (event) => {
       const time = new Date().toLocaleString();
@@ -144,7 +176,7 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
     initializePeerConnection(targetVoipId);
     if (!peerConnection.current) return;
 
-    callId.current = `${username}-${targetVoipId}-${Date.now()}`;
+    setIsCaller(true); // 標記為發起通話方
     setCallState('calling');
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     setLocalStream(stream);
@@ -160,10 +192,16 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
     }
   };
 
-  const handleReceiveOffer = (offer: RTCSessionDescriptionInit, callerVoipId: string) => {
+  const handleReceiveOffer = (offer: RTCSessionDescriptionInit, callerVoipId: string, receivedCallId?: string | number) => {
     const time = new Date().toLocaleString();
-    console.log(`[${time}] [SIGNALING] Received offer from: ${callerVoipId}`);
+    console.log(`[${time}] [SIGNALING] Received offer from: ${callerVoipId}, callId: ${receivedCallId}`);
     
+    // 使用後端傳來的數據庫 callId
+    if (receivedCallId) {
+      callId.current = String(receivedCallId);
+    }
+    
+    setIsCaller(false); // 標記為接聽方
     incomingOffer.current = offer;
     setCallerId(callerVoipId);
     setCallState('incoming');
@@ -172,8 +210,14 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
   const answerCall = async () => {
     if (!incomingOffer.current || !callerId) return;
 
+    // 保存當前的 callId，因為 initializePeerConnection 會重新設置它
+    const currentCallId = callId.current;
+    
     initializePeerConnection(callerId);
     if (!peerConnection.current) return;
+
+    // 恢復正確的 callId
+    callId.current = currentCallId;
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     setLocalStream(stream);
@@ -200,10 +244,16 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
     incomingOffer.current = null;
   };
 
-  const handleReceiveAnswer = async (answer: RTCSessionDescriptionInit) => {
+  const handleReceiveAnswer = async (answer: RTCSessionDescriptionInit, receivedCallId?: string | number) => {
     if (peerConnection.current) {
       const time = new Date().toLocaleString();
-      console.log(`[${time}] [SIGNALING] Received answer from: ${callerId || currentTarget}`);
+      console.log(`[${time}] [SIGNALING] Received answer from: ${callerId || currentTarget}, callId: ${receivedCallId}`);
+      
+      // 更新 callId（發起方在這裡接收到後端的數據庫 callId）
+      if (receivedCallId) {
+        callId.current = String(receivedCallId);
+      }
+      
       await peerConnection.current.setRemoteDescription(new RTCSessionDescription(answer));
       
       while(candidateQueue.current.length > 0) {
@@ -231,6 +281,21 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
       candidateQueue.current.push(candidate);
     }
   };
+
+  // 當 localStream 和 remoteStream 都可用且通話狀態為 connected 時開始錄音
+  useEffect(() => {
+    if (localStream && remoteStream && callState === 'connected' && callId.current) {
+      const time = new Date().toLocaleString();
+      console.log(`[${time}] [RECORDING] Both streams available and call connected, starting recording...`);
+      
+      // 延遲一點時間確保音頻流穩定
+      setTimeout(() => {
+        if (localStream && remoteStream && callState === 'connected' && !mediaRecorder.current) {
+          startRecording();
+        }
+      }, 1000);
+    }
+  }, [localStream, remoteStream, callState, startRecording]);
 
   return { localStream, remoteStream, callState, callerId, startCall, hangUp, answerCall, handleReceiveOffer, handleReceiveAnswer, handleReceiveCandidate, isUploading, uploadSuccess, uploadError };
 };

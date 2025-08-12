@@ -34,10 +34,10 @@ const CallView: React.FC = () => {
           setOnlineUsers(data.users.filter((user: OnlineUser) => user.name !== username));
           break;
         case 'offer':
-          handleReceiveOffer(data.offer, data.sender_voip_id);
+          handleReceiveOffer(data.offer, data.sender_voip_id, data.callId);
           break;
         case 'answer':
-          handleReceiveAnswer(data.answer);
+          handleReceiveAnswer(data.answer, data.callId);
           break;
         case 'candidate':
           handleReceiveCandidate(data.candidate);

@@ -21,7 +21,7 @@ const MonitorPage: React.FC = () => {
   const [ws, setWs] = useState<WebSocket | null>(null);
 
   useEffect(() => {
-    const websocket = new WebSocket('wss://localhost:8443');
+    const websocket = new WebSocket('wss://192.168.0.75:8443');
     
     websocket.onopen = () => {
       console.log('[MONITOR] WebSocket connected');

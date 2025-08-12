@@ -7,13 +7,23 @@ const cors = require('cors');
 const { initializeDatabase, db } = require('./src/database');
 const { WebSocketServer } = require('ws');
 const multer = require('multer');
+const ffmpeg = require('fluent-ffmpeg');
+const ffmpegStatic = require('ffmpeg-static');
 const app = express();
 const PORT = process.env.PORT || 8443;
+
+// 設置 FFmpeg 路徑
+ffmpeg.setFfmpegPath(ffmpegStatic);
 
 app.use(cors());
 app.use(express.json());
 
 initializeDatabase();
+
+// 確保 uploads 目錄存在
+if (!fs.existsSync('uploads')) {
+  fs.mkdirSync('uploads');
+}
 
 // --- Multer Setup ---
 const storage = multer.diskStorage({
@@ -21,7 +31,7 @@ const storage = multer.diskStorage({
     cb(null, 'uploads/');
   },
   filename: (req, file, cb) => {
-    cb(null, `${req.body.callId}.webm`);
+    cb(null, `${Date.now()}-${req.body.callId}.webm`);
   },
 });
 
@@ -29,14 +39,65 @@ const upload = multer({ storage });
 
 // --- API Routes ---
 app.post('/api/upload', upload.single('audio'), (req, res) => {
-  const { callId } = req.body;
-  const audioUrl = `uploads/${callId}.webm`;
-  db.run('UPDATE call_history SET audio_url = ? WHERE id = ?', [audioUrl, callId], (err) => {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
-    res.json({ message: 'File uploaded successfully' });
-  });
+  const { callId, callerName, receiverName } = req.body;
+  
+  if (!req.file) {
+    return res.status(400).json({ error: 'No audio file uploaded' });
+  }
+
+  const inputPath = req.file.path;
+  
+  // 生成新的檔案名格式：2025-08-12-18-22-40-user1-user2.wav
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hour = String(now.getHours()).padStart(2, '0');
+  const minute = String(now.getMinutes()).padStart(2, '0');
+  const second = String(now.getSeconds()).padStart(2, '0');
+  
+  const fileName = `${year}-${month}-${day}-${hour}-${minute}-${second}-${callerName || 'unknown'}-${receiverName || 'unknown'}.wav`;
+  const outputPath = path.join('uploads', fileName);
+  
+  // 轉換 WebM 到 WAV
+  ffmpeg(inputPath)
+    .toFormat('wav')
+    .on('end', () => {
+      console.log(`Audio conversion completed for call ${callId}`);
+      
+      // 刪除原始 WebM 文件
+      fs.unlink(inputPath, (unlinkErr) => {
+        if (unlinkErr) {
+          console.error('Error deleting original file:', unlinkErr);
+        }
+      });
+      
+      // 更新數據庫記錄
+      const audioUrl = `uploads/${fileName}`;
+      db.run('UPDATE call_history SET audio_url = ? WHERE id = ?', [audioUrl, callId], (err) => {
+        if (err) {
+          console.error('Database update error:', err);
+          return res.status(500).json({ error: err.message });
+        }
+        res.json({ 
+          message: 'File uploaded and converted successfully',
+          audioUrl: audioUrl
+        });
+      });
+    })
+    .on('error', (err) => {
+      console.error('FFmpeg conversion error:', err);
+      
+      // 清理失敗的文件
+      fs.unlink(inputPath, (unlinkErr) => {
+        if (unlinkErr) {
+          console.error('Error deleting failed file:', unlinkErr);
+        }
+      });
+      
+      res.status(500).json({ error: 'Audio conversion failed' });
+    })
+    .save(outputPath);
 });
 
 app.get('/api/download/:callId', (req, res) => {
@@ -46,9 +107,20 @@ app.get('/api/download/:callId', (req, res) => {
       return res.status(500).json({ error: err.message });
     }
     if (row && row.audio_url) {
-      res.download(path.join(__dirname, row.audio_url));
+      const filePath = path.join(__dirname, row.audio_url);
+      
+      // 檢查文件是否存在
+      if (fs.existsSync(filePath)) {
+        // 從 audio_url 中提取原始檔名
+        const originalFileName = path.basename(row.audio_url);
+        res.setHeader('Content-Disposition', `attachment; filename="${originalFileName}"`);
+        res.setHeader('Content-Type', 'audio/wav');
+        res.download(filePath, originalFileName);
+      } else {
+        res.status(404).json({ message: 'Audio file not found on server' });
+      }
     } else {
-      res.status(404).json({ message: 'File not found' });
+      res.status(404).json({ message: 'Call record not found or no audio available' });
     }
   });
 });
@@ -231,41 +303,12 @@ wss.on('connection', (ws, req) => {
         console.log(JSON.stringify(data.offer, null, 2));
         const targetUser = onlineUsers.get(data.target_voip_id);
         if (targetUser) {
-          const messageWithSender = { ...data, sender_voip_id: ws.voip_id };
+          // 只轉發 offer，不創建通話記錄
+          const messageWithSender = { 
+            ...data, 
+            sender_voip_id: ws.voip_id
+          };
           targetUser.ws.send(JSON.stringify(messageWithSender));
-          
-          // 創建通話記錄
-          const callKey = `${ws.voip_id}-${data.target_voip_id}`;
-          if (!activeCalls.has(callKey)) {
-            getOrCreateUser(ws.voip_id, (callerId) => {
-              getOrCreateUser(data.target_voip_id, (receiverId) => {
-                if (callerId && receiverId) {
-                  const callerUser = onlineUsers.get(ws.voip_id);
-                  const receiverUser = onlineUsers.get(data.target_voip_id);
-                  
-                  db.run(`INSERT INTO call_history 
-                    (caller_id, receiver_id, caller_ip, receiver_ip, start_time, status) 
-                    VALUES (?, ?, ?, ?, ?, ?)`, 
-                    [callerId, receiverId, callerUser.ip, receiverUser.ip, new Date().toISOString(), 'connecting'], 
-                    function(err) {
-                      if (err) {
-                        console.error('Error creating call record:', err);
-                      } else {
-                        activeCalls.set(callKey, {
-                          callId: this.lastID,
-                          startTime: new Date(),
-                          caller: ws.voip_id,
-                          receiver: data.target_voip_id
-                        });
-                        console.log(`[${time}] Call record created with ID: ${this.lastID}`);
-                        broadcastCallStatus();
-                      }
-                    }
-                  );
-                }
-              });
-            });
-          }
         } else {
           console.log(`[${time}] [SIGNALING] Target user ${data.target_voip_id} not found.`);
         }
@@ -277,24 +320,46 @@ wss.on('connection', (ws, req) => {
         console.log(JSON.stringify(data.answer, null, 2));
         const targetUser = onlineUsers.get(data.target_voip_id);
         if (targetUser) {
-          const messageWithSender = { ...data, sender_voip_id: ws.voip_id };
-          targetUser.ws.send(JSON.stringify(messageWithSender));
-          
-          // 更新通話狀態為已連接
+          // 在接聽時創建通話記錄
           const callKey = `${data.target_voip_id}-${ws.voip_id}`;
-          const callInfo = activeCalls.get(callKey);
-          if (callInfo) {
-            db.run('UPDATE call_history SET status = ? WHERE id = ?', 
-              ['connected', callInfo.callId], (err) => {
-                if (err) {
-                  console.error('Error updating call status:', err);
-                } else {
-                  console.log(`[${time}] Call ${callInfo.callId} status updated to connected`);
-                  broadcastCallStatus();
-                }
+          
+          getOrCreateUser(data.target_voip_id, (callerId) => {
+            getOrCreateUser(ws.voip_id, (receiverId) => {
+              if (callerId && receiverId) {
+                const callerUser = onlineUsers.get(data.target_voip_id);
+                const receiverUser = onlineUsers.get(ws.voip_id);
+                
+                db.run(`INSERT INTO call_history 
+                  (caller_id, receiver_id, caller_ip, receiver_ip, start_time, status) 
+                  VALUES (?, ?, ?, ?, ?, ?)`, 
+                  [callerId, receiverId, callerUser.ip, receiverUser.ip, new Date().toISOString(), 'connected'], 
+                  function(err) {
+                    if (err) {
+                      console.error('Error creating call record:', err);
+                    } else {
+                      const dbCallId = this.lastID;
+                      activeCalls.set(callKey, {
+                        callId: dbCallId,
+                        startTime: new Date(),
+                        caller: data.target_voip_id,
+                        receiver: ws.voip_id
+                      });
+                      console.log(`[${time}] Call record created with ID: ${dbCallId}`);
+                      
+                      // 將 callId 包含在發送給發起方的消息中
+                      const messageWithSender = { 
+                        ...data, 
+                        sender_voip_id: ws.voip_id,
+                        callId: dbCallId 
+                      };
+                      targetUser.ws.send(JSON.stringify(messageWithSender));
+                      broadcastCallStatus();
+                    }
+                  }
+                );
               }
-            );
-          }
+            });
+          });
         } else {
           console.log(`[${time}] [SIGNALING] Target user ${data.target_voip_id} not found.`);
         }

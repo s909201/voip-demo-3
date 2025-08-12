@@ -1,7 +1,9 @@
-export const uploadRecording = async (audioBlob: Blob, callId: string): Promise<Response> => {
+export const uploadRecording = async (audioBlob: Blob, callId: string, callerName?: string, receiverName?: string): Promise<Response> => {
   const formData = new FormData();
   formData.append('audio', audioBlob, `${callId}.webm`);
   formData.append('callId', callId);
+  if (callerName) formData.append('callerName', callerName);
+  if (receiverName) formData.append('receiverName', receiverName);
 
   return fetch('/api/upload', {
     method: 'POST',
