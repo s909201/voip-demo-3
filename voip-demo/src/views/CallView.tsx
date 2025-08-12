@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import useWebRTC from '../hooks/useWebRTC';
 
 interface OnlineUser {
@@ -94,6 +95,24 @@ const CallView: React.FC = () => {
 
   return (
     <div className="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-4">
+      {/* 導航連結 */}
+      <div className="fixed top-4 right-4 flex space-x-4 z-10">
+        <Link 
+          to="/monitor" 
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center space-x-2"
+        >
+          <span>📊</span>
+          <span>即時監控</span>
+        </Link>
+        <Link 
+          to="/history" 
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center space-x-2"
+        >
+          <span>📋</span>
+          <span>通話紀錄</span>
+        </Link>
+      </div>
+
       <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-sm" style={{ transform: 'translateY(-100px)' }}>
         <h1 className="text-2xl font-bold mb-6 text-center">安心聊</h1>
         

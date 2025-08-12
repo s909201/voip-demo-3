@@ -59,6 +59,8 @@ app.get('/api/history', (req, res) => {
       ch.id,
       uc.name as caller_name,
       ur.name as receiver_name,
+      ch.caller_ip,
+      ch.receiver_ip,
       ch.start_time,
       ch.end_time,
       ch.duration_seconds,
@@ -105,6 +107,29 @@ server.listen(PORT, '0.0.0.0', () => {
 });
 
 const onlineUsers = new Map();
+const activeCalls = new Map(); // 追蹤進行中的通話
+
+// 輔助函數：獲取或創建用戶
+const getOrCreateUser = (voip_id, callback) => {
+  db.get('SELECT id FROM users WHERE voip_id = ?', [voip_id], (err, row) => {
+    if (err) {
+      console.error('Database error:', err);
+      return callback(null);
+    }
+    if (row) {
+      callback(row.id);
+    } else {
+      // 創建新用戶
+      db.run('INSERT INTO users (name, voip_id) VALUES (?, ?)', [voip_id, voip_id], function(err) {
+        if (err) {
+          console.error('Error creating user:', err);
+          return callback(null);
+        }
+        callback(this.lastID);
+      });
+    }
+  });
+};
 
 const broadcastUserList = () => {
   const userList = Array.from(onlineUsers.values()).map(user => ({
@@ -124,6 +149,34 @@ const broadcastUserList = () => {
     }
   });
 };
+
+const broadcastCallStatus = () => {
+  const activeCallsList = Array.from(activeCalls.values()).map(call => ({
+    id: call.callId,
+    caller: call.caller,
+    receiver: call.receiver,
+    startTime: call.startTime.toISOString(),
+    duration: Math.floor((new Date() - call.startTime) / 1000)
+  }));
+
+  const message = JSON.stringify({
+    type: 'call-status',
+    calls: activeCallsList,
+  });
+
+  wss.clients.forEach((client) => {
+    if (client.readyState === client.OPEN) {
+      client.send(message);
+    }
+  });
+};
+
+// 定期更新通話時長
+const callStatusInterval = setInterval(() => {
+  if (activeCalls.size > 0) {
+    broadcastCallStatus();
+  }
+}, 1000); // 每秒更新一次
 
 const interval = setInterval(() => {
   wss.clients.forEach((ws) => {
@@ -180,6 +233,39 @@ wss.on('connection', (ws, req) => {
         if (targetUser) {
           const messageWithSender = { ...data, sender_voip_id: ws.voip_id };
           targetUser.ws.send(JSON.stringify(messageWithSender));
+          
+          // 創建通話記錄
+          const callKey = `${ws.voip_id}-${data.target_voip_id}`;
+          if (!activeCalls.has(callKey)) {
+            getOrCreateUser(ws.voip_id, (callerId) => {
+              getOrCreateUser(data.target_voip_id, (receiverId) => {
+                if (callerId && receiverId) {
+                  const callerUser = onlineUsers.get(ws.voip_id);
+                  const receiverUser = onlineUsers.get(data.target_voip_id);
+                  
+                  db.run(`INSERT INTO call_history 
+                    (caller_id, receiver_id, caller_ip, receiver_ip, start_time, status) 
+                    VALUES (?, ?, ?, ?, ?, ?)`, 
+                    [callerId, receiverId, callerUser.ip, receiverUser.ip, new Date().toISOString(), 'connecting'], 
+                    function(err) {
+                      if (err) {
+                        console.error('Error creating call record:', err);
+                      } else {
+                        activeCalls.set(callKey, {
+                          callId: this.lastID,
+                          startTime: new Date(),
+                          caller: ws.voip_id,
+                          receiver: data.target_voip_id
+                        });
+                        console.log(`[${time}] Call record created with ID: ${this.lastID}`);
+                        broadcastCallStatus();
+                      }
+                    }
+                  );
+                }
+              });
+            });
+          }
         } else {
           console.log(`[${time}] [SIGNALING] Target user ${data.target_voip_id} not found.`);
         }
@@ -193,6 +279,22 @@ wss.on('connection', (ws, req) => {
         if (targetUser) {
           const messageWithSender = { ...data, sender_voip_id: ws.voip_id };
           targetUser.ws.send(JSON.stringify(messageWithSender));
+          
+          // 更新通話狀態為已連接
+          const callKey = `${data.target_voip_id}-${ws.voip_id}`;
+          const callInfo = activeCalls.get(callKey);
+          if (callInfo) {
+            db.run('UPDATE call_history SET status = ? WHERE id = ?', 
+              ['connected', callInfo.callId], (err) => {
+                if (err) {
+                  console.error('Error updating call status:', err);
+                } else {
+                  console.log(`[${time}] Call ${callInfo.callId} status updated to connected`);
+                  broadcastCallStatus();
+                }
+              }
+            );
+          }
         } else {
           console.log(`[${time}] [SIGNALING] Target user ${data.target_voip_id} not found.`);
         }
@@ -207,6 +309,34 @@ wss.on('connection', (ws, req) => {
           targetUser.ws.send(JSON.stringify(messageWithSender));
         } else {
           console.log(`[${time}] [SIGNALING] Target user ${data.target_voip_id} not found.`);
+        }
+        
+        // 結束通話記錄
+        const callKey1 = `${ws.voip_id}-${data.target_voip_id}`;
+        const callKey2 = `${data.target_voip_id}-${ws.voip_id}`;
+        const callInfo = activeCalls.get(callKey1) || activeCalls.get(callKey2);
+        
+        if (callInfo) {
+          const endTime = new Date();
+          const durationSeconds = Math.floor((endTime - callInfo.startTime) / 1000);
+          
+          db.run(`UPDATE call_history 
+            SET end_time = ?, duration_seconds = ?, status = ? 
+            WHERE id = ?`, 
+            [endTime.toISOString(), durationSeconds, 'completed', callInfo.callId], 
+            (err) => {
+              if (err) {
+                console.error('Error updating call end time:', err);
+              } else {
+                console.log(`[${time}] Call ${callInfo.callId} completed, duration: ${durationSeconds}s`);
+              }
+            }
+          );
+          
+          // 清除活動通話記錄
+          activeCalls.delete(callKey1);
+          activeCalls.delete(callKey2);
+          broadcastCallStatus();
         }
         break;
       }
@@ -230,8 +360,32 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     if (ws.voip_id && onlineUsers.has(ws.voip_id)) {
+      // 處理未完成的通話記錄
+      for (const [callKey, callInfo] of activeCalls.entries()) {
+        if (callInfo.caller === ws.voip_id || callInfo.receiver === ws.voip_id) {
+          const endTime = new Date();
+          const durationSeconds = Math.floor((endTime - callInfo.startTime) / 1000);
+          
+          db.run(`UPDATE call_history 
+            SET end_time = ?, duration_seconds = ?, status = ? 
+            WHERE id = ?`, 
+            [endTime.toISOString(), durationSeconds, 'disconnected', callInfo.callId], 
+            (err) => {
+              if (err) {
+                console.error('Error updating call on disconnect:', err);
+              } else {
+                console.log(`Call ${callInfo.callId} marked as disconnected due to user leaving`);
+              }
+            }
+          );
+          
+          activeCalls.delete(callKey);
+        }
+      }
+      
       onlineUsers.delete(ws.voip_id);
       broadcastUserList();
+      broadcastCallStatus();
     }
     const closeTime = new Date().toLocaleString();
     console.log(`[${closeTime}] 客戶端已離線，來源 IP: ${ip}`);

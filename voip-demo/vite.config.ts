@@ -9,13 +9,13 @@ const logPlugin = () => {
   return {
     name: 'log-plugin',
     configureServer(server: ViteDevServer) {
-      const wss = new WebSocketServer({ port: 24678 });
+      const wss = new WebSocketServer({ port: 24680 });
       wss.on('connection', (ws: WebSocket) => {
         ws.on('message', (message: Buffer) => {
           console.log(message.toString());
         });
       });
-      console.log('Log WebSocket server running on ws://localhost:24678');
+      console.log('Log WebSocket server running on ws://localhost:24680');
     }
   }
 }

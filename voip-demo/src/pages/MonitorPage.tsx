@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 
-interface CallRecord {
+interface ActiveCall {
   id: number;
-  caller_name: string;
-  receiver_name: string;
-  start_time: string;
-  end_time: string;
-  duration_seconds: number;
-  audio_url: string;
-  status: string;
+  caller: string;
+  receiver: string;
+  startTime: string;
+  duration: number;
 }
 
 interface OnlineUser {
@@ -18,114 +16,170 @@ interface OnlineUser {
 }
 
 const MonitorPage: React.FC = () => {
-  const [records, setRecords] = useState<CallRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [activeCalls, setActiveCalls] = useState<ActiveCall[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
+  const [ws, setWs] = useState<WebSocket | null>(null);
 
   useEffect(() => {
-    const fetchHistory = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const response = await fetch('/api/history');
-        if (!response.ok) {
-          throw new Error('Failed to fetch history');
-        }
-        const data = await response.json();
-        setRecords(data.history);
-      } catch (error) {
-        setError(error instanceof Error ? error.message : 'Unknown error');
-      } finally {
-        setIsLoading(false);
-      }
+    const websocket = new WebSocket('wss://localhost:8443');
+    
+    websocket.onopen = () => {
+      console.log('[MONITOR] WebSocket connected');
+      // 請求用戶列表
+      websocket.send(JSON.stringify({ type: 'request-user-list' }));
     };
 
-    fetchHistory();
-
-    const ws = new WebSocket(`wss://${window.location.hostname}:8443`);
-
-    ws.onopen = () => {
-      console.log('Monitor WebSocket connected');
-      ws.send(JSON.stringify({ type: 'request-user-list' }));
-    };
-
-    ws.onmessage = (event) => {
+    websocket.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      if (data.type === 'user-list') {
-        setOnlineUsers(data.users);
+      
+      switch (data.type) {
+        case 'user-list':
+          setOnlineUsers(data.users);
+          break;
+        case 'call-status':
+          setActiveCalls(data.calls);
+          break;
       }
     };
+
+    websocket.onclose = () => {
+      console.log('[MONITOR] WebSocket disconnected');
+    };
+
+    websocket.onerror = (error) => {
+      console.error('[MONITOR] WebSocket error:', error);
+    };
+
+    setWs(websocket);
 
     return () => {
-      ws.close();
+      websocket.close();
     };
   }, []);
 
+  const formatDuration = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hours > 0) {
+      return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const formatTime = (isoString: string): string => {
+    return new Date(isoString).toLocaleString('zh-TW');
+  };
+
   return (
-    <div className="bg-gray-900 text-white min-h-screen p-8">
-      <h1 className="text-3xl font-bold mb-6">VoIP 通話監控中心</h1>
-      
-      <div className="flex flex-col gap-8">
-        <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-          <h2 className="text-2xl font-bold mb-4">上線人員名單</h2>
-          {onlineUsers.length > 0 ? (
-            <table className="w-full text-left">
-              <thead>
-                <tr>
-                  <th className="py-2">名稱</th>
-                  <th className="py-2">IP</th>
-                  <th className="py-2">上線時間</th>
-                </tr>
-              </thead>
-              <tbody>
-                {onlineUsers.map(user => (
-                  <tr key={user.name} className="border-b border-gray-700">
-                    <td className="py-2">{user.name}</td>
-                    <td className="py-2">{user.ip}</td>
-                    <td className="py-2">{new Date(user.loginTime).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+    <div className="min-h-screen bg-gray-900 text-white p-6">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-3xl font-bold">通話監控中心</h1>
+          <div className="flex space-x-4">
+            <Link 
+              to="/history" 
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center space-x-2"
+            >
+              <span>📋</span>
+              <span>通話紀錄</span>
+            </Link>
+            <Link 
+              to="/" 
+              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center space-x-2"
+            >
+              <span>📞</span>
+              <span>返回通話</span>
+            </Link>
+          </div>
+        </div>
+        
+        {/* 即時通話狀態 */}
+        <div className="mb-8">
+          <h2 className="text-2xl font-semibold mb-4 text-green-400">
+            🔴 進行中通話 ({activeCalls.length})
+          </h2>
+          
+          {activeCalls.length === 0 ? (
+            <div className="bg-gray-800 rounded-lg p-6 text-center text-gray-400">
+              目前沒有進行中的通話
+            </div>
           ) : (
-            <p>無人在線</p>
+            <div className="grid gap-4">
+              {activeCalls.map((call) => (
+                <div key={call.id} className="bg-green-900/30 border border-green-500 rounded-lg p-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                      <div>
+                        <div className="text-lg font-semibold">
+                          {call.caller} ↔ {call.receiver}
+                        </div>
+                        <div className="text-sm text-gray-300">
+                          通話 ID: {call.id} | 開始時間: {formatTime(call.startTime)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-2xl font-mono text-green-400">
+                        {formatDuration(call.duration)}
+                      </div>
+                      <div className="text-sm text-gray-300">通話時長</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
-        <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-          <h2 className="text-2xl font-bold mb-4">通話紀錄</h2>
-          {isLoading && <p>載入中...</p>}
-          {error && <p className="text-red-500">{error}</p>}
-          {!isLoading && !error && records.length === 0 && <p>暫無通話紀錄</p>}
-          {!isLoading && !error && records.length > 0 && (
-            <table className="w-full text-left">
-              <thead>
-                <tr>
-                  <th className="py-2">主叫</th>
-                  <th className="py-2">被叫</th>
-                  <th className="py-2">開始時間</th>
-                  <th className="py-2">持續時間</th>
-                  <th className="py-2">錄音</th>
-                </tr>
-              </thead>
-              <tbody>
-                {records.map(record => (
-                  <tr key={record.id} className="border-b border-gray-700">
-                    <td className="py-2">{record.caller_name}</td>
-                    <td className="py-2">{record.receiver_name}</td>
-                    <td className="py-2">{new Date(record.start_time).toLocaleString()}</td>
-                    <td className="py-2">{record.duration_seconds} 秒</td>
-                    <td className="py-2">
-                      {record.audio_url && (
-                        <a href={`/api/download/${record.id}`} download className="text-blue-400 hover:underline">下載</a>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {/* 線上用戶列表 */}
+        <div>
+          <h2 className="text-2xl font-semibold mb-4 text-blue-400">
+            👥 線上用戶 ({onlineUsers.length})
+          </h2>
+          
+          {onlineUsers.length === 0 ? (
+            <div className="bg-gray-800 rounded-lg p-6 text-center text-gray-400">
+              目前沒有用戶在線
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {onlineUsers.map((user, index) => (
+                <div key={index} className="bg-gray-800 rounded-lg p-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                    <div>
+                      <div className="font-semibold">{user.name}</div>
+                      <div className="text-sm text-gray-400">IP: {user.ip}</div>
+                      <div className="text-xs text-gray-500">
+                        上線時間: {formatTime(user.loginTime)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
+        </div>
+
+        {/* 連線狀態指示器 */}
+        <div className="fixed bottom-4 right-4">
+          <div className={`flex items-center space-x-2 px-4 py-2 rounded-full ${
+            ws?.readyState === WebSocket.OPEN 
+              ? 'bg-green-600' 
+              : 'bg-red-600'
+          }`}>
+            <div className={`w-2 h-2 rounded-full ${
+              ws?.readyState === WebSocket.OPEN 
+                ? 'bg-white animate-pulse' 
+                : 'bg-white'
+            }`}></div>
+            <span className="text-sm font-medium">
+              {ws?.readyState === WebSocket.OPEN ? '已連線' : '未連線'}
+            </span>
+          </div>
         </div>
       </div>
     </div>
