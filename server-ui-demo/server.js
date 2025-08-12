@@ -90,6 +90,13 @@ const server = https.createServer(serverOptions, app);
 
 const wss = new WebSocketServer({ server });
 
+const formatIp = (ip) => {
+  if (ip.startsWith('::ffff:')) {
+    return ip.substring(7);
+  }
+  return ip;
+};
+
 server.listen(PORT, () => {
   console.log(`伺服器正在 https://localhost:${PORT} 上運行`);
 });
@@ -97,13 +104,20 @@ server.listen(PORT, () => {
 const onlineUsers = new Map();
 
 const broadcastUserList = () => {
-  const userList = JSON.stringify({
+  const userList = Array.from(onlineUsers.values()).map(user => ({
+    name: user.voip_id,
+    ip: user.ip,
+    loginTime: user.loginTime,
+  }));
+
+  const message = JSON.stringify({
     type: 'user-list',
-    users: Array.from(onlineUsers.keys()),
+    users: userList,
   });
+
   wss.clients.forEach((client) => {
     if (client.readyState === client.OPEN) {
-      client.send(userList);
+      client.send(message);
     }
   });
 };
@@ -117,7 +131,8 @@ const interval = setInterval(() => {
 }, 30000);
 
 wss.on('connection', (ws, req) => {
-  const ip = req.socket.remoteAddress;
+  const rawIp = req.socket.remoteAddress;
+  const ip = formatIp(rawIp);
   if (ip === '::1') {
     ws.terminate();
     return;
@@ -135,23 +150,33 @@ wss.on('connection', (ws, req) => {
     switch (data.type) {
       case 'login':
         ws.voip_id = data.voip_id;
-        onlineUsers.set(data.voip_id, ws);
+        onlineUsers.set(data.voip_id, {
+          ws: ws,
+          voip_id: data.voip_id,
+          ip: ip,
+          loginTime: new Date().toISOString(),
+        });
         broadcastUserList();
         break;
       case 'request-user-list':
+        const userList = Array.from(onlineUsers.values()).map(user => ({
+          name: user.voip_id,
+          ip: user.ip,
+          loginTime: user.loginTime,
+        }));
         ws.send(JSON.stringify({
           type: 'user-list',
-          users: Array.from(onlineUsers.keys()),
+          users: userList,
         }));
         break;
       case 'offer': {
         const time = new Date().toLocaleString();
         console.log(`[${time}] [SIGNALING] offer from ${ws.voip_id} to ${data.target_voip_id}`);
         console.log(JSON.stringify(data.offer, null, 2));
-        const targetWs = onlineUsers.get(data.target_voip_id);
-        if (targetWs) {
+        const targetUser = onlineUsers.get(data.target_voip_id);
+        if (targetUser) {
           const messageWithSender = { ...data, sender_voip_id: ws.voip_id };
-          targetWs.send(JSON.stringify(messageWithSender));
+          targetUser.ws.send(JSON.stringify(messageWithSender));
         } else {
           console.log(`[${time}] [SIGNALING] Target user ${data.target_voip_id} not found.`);
         }
@@ -161,10 +186,10 @@ wss.on('connection', (ws, req) => {
         const time = new Date().toLocaleString();
         console.log(`[${time}] [SIGNALING] answer from ${ws.voip_id} to ${data.target_voip_id}`);
         console.log(JSON.stringify(data.answer, null, 2));
-        const targetWs = onlineUsers.get(data.target_voip_id);
-        if (targetWs) {
+        const targetUser = onlineUsers.get(data.target_voip_id);
+        if (targetUser) {
           const messageWithSender = { ...data, sender_voip_id: ws.voip_id };
-          targetWs.send(JSON.stringify(messageWithSender));
+          targetUser.ws.send(JSON.stringify(messageWithSender));
         } else {
           console.log(`[${time}] [SIGNALING] Target user ${data.target_voip_id} not found.`);
         }
@@ -173,10 +198,10 @@ wss.on('connection', (ws, req) => {
       case 'hang-up': {
         const time = new Date().toLocaleString();
         console.log(`[${time}] [SIGNALING] hang-up from ${ws.voip_id} to ${data.target_voip_id}`);
-        const targetWs = onlineUsers.get(data.target_voip_id);
-        if (targetWs) {
+        const targetUser = onlineUsers.get(data.target_voip_id);
+        if (targetUser) {
           const messageWithSender = { ...data, sender_voip_id: ws.voip_id };
-          targetWs.send(JSON.stringify(messageWithSender));
+          targetUser.ws.send(JSON.stringify(messageWithSender));
         } else {
           console.log(`[${time}] [SIGNALING] Target user ${data.target_voip_id} not found.`);
         }
@@ -186,10 +211,10 @@ wss.on('connection', (ws, req) => {
         const time = new Date().toLocaleString();
         console.log(`[${time}] [SIGNALING] candidate from ${ws.voip_id} to ${data.target_voip_id}`);
         console.log(JSON.stringify(data.candidate, null, 2));
-        const targetWs = onlineUsers.get(data.target_voip_id);
-        if (targetWs) {
+        const targetUser = onlineUsers.get(data.target_voip_id);
+        if (targetUser) {
           const messageWithSender = { ...data, sender_voip_id: ws.voip_id };
-          targetWs.send(JSON.stringify(messageWithSender));
+          targetUser.ws.send(JSON.stringify(messageWithSender));
         } else {
           console.log(`[${time}] [SIGNALING] Target user ${data.target_voip_id} not found.`);
         }
@@ -201,7 +226,7 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
-    if (ws.voip_id && onlineUsers.get(ws.voip_id) === ws) {
+    if (ws.voip_id && onlineUsers.has(ws.voip_id)) {
       onlineUsers.delete(ws.voip_id);
       broadcastUserList();
     }

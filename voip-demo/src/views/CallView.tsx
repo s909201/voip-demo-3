@@ -1,10 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import useWebRTC from '../hooks/useWebRTC';
 
+interface OnlineUser {
+  name: string;
+  ip: string;
+  loginTime: string;
+}
+
 const CallView: React.FC = () => {
   const [username, setUsername] = useState('');
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
-  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [currentTarget, setCurrentTarget] = useState<string>('');
   const { remoteStream, callState, callerId, startCall, hangUp, answerCall, handleReceiveOffer, handleReceiveAnswer, handleReceiveCandidate } = useWebRTC(socket, username, currentTarget);
@@ -24,7 +30,7 @@ const CallView: React.FC = () => {
       const data = JSON.parse(event.data);
       switch (data.type) {
         case 'user-list':
-          setOnlineUsers(data.users.filter((user: string) => user !== username));
+          setOnlineUsers(data.users.filter((user: OnlineUser) => user.name !== username));
           break;
         case 'offer':
           handleReceiveOffer(data.offer, data.sender_voip_id);
@@ -119,7 +125,7 @@ const CallView: React.FC = () => {
           >
             {onlineUsers.length > 0 ? (
               onlineUsers.map((user) => (
-                <option key={user} value={user}>{user}</option>
+                <option key={user.name} value={user.name}>{user.name}</option>
               ))
             ) : (
               <option>無其他在線使用者</option>

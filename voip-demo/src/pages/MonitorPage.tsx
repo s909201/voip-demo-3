@@ -11,11 +11,17 @@ interface CallRecord {
   status: string;
 }
 
+interface OnlineUser {
+  name: string;
+  ip: string;
+  loginTime: string;
+}
+
 const MonitorPage: React.FC = () => {
   const [records, setRecords] = useState<CallRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
 
   useEffect(() => {
     const fetchHistory = async () => {
@@ -60,8 +66,34 @@ const MonitorPage: React.FC = () => {
     <div className="bg-gray-900 text-white min-h-screen p-8">
       <h1 className="text-3xl font-bold mb-6">VoIP 通話監控中心</h1>
       
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div className="md:col-span-2 bg-gray-800 p-6 rounded-lg shadow-lg">
+      <div className="flex flex-col gap-8">
+        <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
+          <h2 className="text-2xl font-bold mb-4">上線人員名單</h2>
+          {onlineUsers.length > 0 ? (
+            <table className="w-full text-left">
+              <thead>
+                <tr>
+                  <th className="py-2">名稱</th>
+                  <th className="py-2">IP</th>
+                  <th className="py-2">上線時間</th>
+                </tr>
+              </thead>
+              <tbody>
+                {onlineUsers.map(user => (
+                  <tr key={user.name} className="border-b border-gray-700">
+                    <td className="py-2">{user.name}</td>
+                    <td className="py-2">{user.ip}</td>
+                    <td className="py-2">{new Date(user.loginTime).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p>無人在線</p>
+          )}
+        </div>
+
+        <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
           <h2 className="text-2xl font-bold mb-4">通話紀錄</h2>
           {isLoading && <p>載入中...</p>}
           {error && <p className="text-red-500">{error}</p>}
@@ -93,19 +125,6 @@ const MonitorPage: React.FC = () => {
                 ))}
               </tbody>
             </table>
-          )}
-        </div>
-
-        <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-          <h2 className="text-2xl font-bold mb-4">上線人員名單</h2>
-          {onlineUsers.length > 0 ? (
-            <ul>
-              {onlineUsers.map(user => (
-                <li key={user} className="py-1">{user}</li>
-              ))}
-            </ul>
-          ) : (
-            <p>無人在線</p>
           )}
         </div>
       </div>
