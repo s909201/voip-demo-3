@@ -13,8 +13,58 @@ const CallView: React.FC = () => {
   useEffect(() => {
     if (remoteAudioRef.current && remoteStream) {
       remoteAudioRef.current.srcObject = remoteStream;
+      remoteAudioRef.current.play().catch(error => console.error("Error playing remote audio:", error));
     }
   }, [remoteStream]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const messageHandler = (event: MessageEvent) => {
+      const data = JSON.parse(event.data);
+      switch (data.type) {
+        case 'user-list':
+          setOnlineUsers(data.users.filter((user: string) => user !== username));
+          break;
+        case 'offer':
+          handleReceiveOffer(data.offer, data.sender_voip_id);
+          break;
+        case 'answer':
+          handleReceiveAnswer(data.answer);
+          break;
+        case 'candidate':
+          handleReceiveCandidate(data.candidate);
+          break;
+        case 'hang-up':
+          hangUp(true);
+          break;
+        default:
+          break;
+      }
+    };
+
+    const closeHandler = () => {
+      console.log('WebSocket disconnected');
+      setConnectionStatus('disconnected');
+      setOnlineUsers([]);
+      setSocket(null);
+    };
+
+    const errorHandler = (error: Event) => {
+      console.error('WebSocket error:', error);
+      setConnectionStatus('disconnected');
+    };
+
+    socket.onmessage = messageHandler;
+    socket.onclose = closeHandler;
+    socket.onerror = errorHandler;
+
+    return () => {
+      socket.onmessage = null;
+      socket.onclose = null;
+      socket.onerror = null;
+    };
+  }, [socket, username, handleReceiveOffer, handleReceiveAnswer, handleReceiveCandidate, hangUp]);
 
   const handleConnect = () => {
     if (!username.trim()) {
@@ -29,33 +79,6 @@ const CallView: React.FC = () => {
       ws.send(JSON.stringify({ type: 'login', voip_id: username }));
       ws.send(JSON.stringify({ type: 'request-user-list' }));
       setConnectionStatus('connected');
-    };
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'user-list') {
-        setOnlineUsers(data.users.filter((user: string) => user !== username));
-      } else if (data.type === 'offer') {
-        handleReceiveOffer(data.offer, data.sender_voip_id);
-      } else if (data.type === 'answer') {
-        handleReceiveAnswer(data.answer);
-      } else if (data.type === 'candidate') {
-        handleReceiveCandidate(data.candidate);
-      } else if (data.type === 'hang-up') {
-        hangUp();
-      }
-    };
-
-    ws.onclose = () => {
-      console.log('WebSocket disconnected');
-      setConnectionStatus('disconnected');
-      setOnlineUsers([]);
-      setSocket(null);
-    };
-
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      setConnectionStatus('disconnected');
     };
 
     setSocket(ws);
@@ -128,7 +151,7 @@ const CallView: React.FC = () => {
             {callState === 'calling' ? '撥號中...' : '撥號'}
           </button>
           <button 
-            onClick={hangUp} 
+            onClick={() => hangUp()} 
             className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-full transition duration-300 disabled:bg-gray-500" 
             disabled={callState === 'idle'}
           >
@@ -136,7 +159,7 @@ const CallView: React.FC = () => {
           </button>
         </div>
         
-        <audio ref={remoteAudioRef} autoPlay />
+        <audio ref={remoteAudioRef} autoPlay playsInline />
       </div>
     </div>
   );
