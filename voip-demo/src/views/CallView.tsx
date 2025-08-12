@@ -62,7 +62,7 @@ const CallView: React.FC = () => {
 
   return (
     <div className="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-4">
-      <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-sm">
+      <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-sm" style={{ transform: 'translateY(-100px)' }}>
         <h1 className="text-2xl font-bold mb-6 text-center">安心聊</h1>
         
         <div className="mb-4">

@@ -116,8 +116,10 @@ const interval = setInterval(() => {
   });
 }, 30000);
 
-wss.on('connection', (ws) => {
-  console.log('客戶端已連線');
+wss.on('connection', (ws, req) => {
+  const ip = req.socket.remoteAddress;
+  const time = new Date().toLocaleString();
+  console.log(`[${time}] 客戶端已連線，來源 IP: ${ip}`);
   ws.isAlive = true;
   ws.on('pong', () => {
     ws.isAlive = true;
@@ -138,19 +140,44 @@ wss.on('connection', (ws) => {
           users: Array.from(onlineUsers.keys()),
         }));
         break;
-      case 'offer':
-      case 'answer':
-      case 'candidate':
-      case 'hang-up':
+      case 'offer': {
+        const time = new Date().toLocaleString();
+        console.log(`[${time}] 撥號: ${ws.voip_id} (${ip}) -> ${data.target_voip_id}`);
         const targetWs = onlineUsers.get(data.target_voip_id);
         if (targetWs) {
-          const messageWithSender = {
-            ...data,
-            sender_voip_id: ws.voip_id,
-          };
+          const messageWithSender = { ...data, sender_voip_id: ws.voip_id };
           targetWs.send(JSON.stringify(messageWithSender));
         }
         break;
+      }
+      case 'answer': {
+        const time = new Date().toLocaleString();
+        console.log(`[${time}] 接聽: ${ws.voip_id} (${ip}) -> ${data.target_voip_id}`);
+        const targetWs = onlineUsers.get(data.target_voip_id);
+        if (targetWs) {
+          const messageWithSender = { ...data, sender_voip_id: ws.voip_id };
+          targetWs.send(JSON.stringify(messageWithSender));
+        }
+        break;
+      }
+      case 'hang-up': {
+        const time = new Date().toLocaleString();
+        console.log(`[${time}] 掛斷: ${ws.voip_id} (${ip}) -> ${data.target_voip_id}`);
+        const targetWs = onlineUsers.get(data.target_voip_id);
+        if (targetWs) {
+          const messageWithSender = { ...data, sender_voip_id: ws.voip_id };
+          targetWs.send(JSON.stringify(messageWithSender));
+        }
+        break;
+      }
+      case 'candidate': {
+        const targetWs = onlineUsers.get(data.target_voip_id);
+        if (targetWs) {
+          const messageWithSender = { ...data, sender_voip_id: ws.voip_id };
+          targetWs.send(JSON.stringify(messageWithSender));
+        }
+        break;
+      }
       default:
         break;
     }
@@ -161,7 +188,8 @@ wss.on('connection', (ws) => {
       onlineUsers.delete(ws.voip_id);
       broadcastUserList();
     }
-    console.log('客戶端已離線');
+    const closeTime = new Date().toLocaleString();
+    console.log(`[${closeTime}] 客戶端已離線，來源 IP: ${ip}`);
   });
 
   ws.on('error', (error) => {
