@@ -16,6 +16,7 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
   const callId = useRef<string | null>(null);
   const incomingOffer = useRef<RTCSessionDescriptionInit | null>(null);
   const candidateQueue = useRef<RTCIceCandidateInit[]>([]);
+  const ringtone = useRef<HTMLAudioElement | null>(null);
 
   const servers = {
     iceServers: [
@@ -60,6 +61,10 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
     }
     if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
+    }
+    if (ringtone.current) {
+      ringtone.current.pause();
+      ringtone.current.currentTime = 0;
     }
     setLocalStream(null);
     setRemoteStream(null);
@@ -205,6 +210,12 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
     incomingOffer.current = offer;
     setCallerId(callerVoipId);
     setCallState('incoming');
+
+    if (!ringtone.current) {
+      ringtone.current = new Audio('/Cat-iPhone-ringtone.wav');
+      ringtone.current.loop = true;
+    }
+    ringtone.current.play().catch(error => console.error("Ringtone play failed:", error));
   };
 
   const answerCall = async () => {
@@ -239,6 +250,10 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
     console.log(`[${time}] [SIGNALING] Sending answer to: ${callerId}`);
     if (socket) {
       socket.send(JSON.stringify({ type: 'answer', answer, target_voip_id: callerId }));
+    }
+    if (ringtone.current) {
+      ringtone.current.pause();
+      ringtone.current.currentTime = 0;
     }
     setCallState('connected');
     incomingOffer.current = null;
