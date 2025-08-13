@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  # 後端服務 (Node.js Express)
+  backend:
+    build:
+      context: ./server-ui-demo
+      dockerfile: Dockerfile
+    container_name: voip_backend
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./server-ui-demo/uploads:/app/uploads
+    # 如果您有 .env 檔案需要載入，可以取消以下註解
+    # env_file:
+    #   - ./server-ui-demo/.env
+    restart: unless-stopped
+
+  # 前端服務 (React + Nginx)
+  frontend:
+    build:
+      context: ./voip-demo
+      dockerfile: Dockerfile
+    container_name: voip_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped

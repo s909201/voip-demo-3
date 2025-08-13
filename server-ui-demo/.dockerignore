@@ -1,0 +1,8 @@
+# 排除 node_modules，因為會在 Docker 容器中重新安裝
+node_modules
+
+# 排除 npm 的偵錯日誌
+npm-debug.log
+
+# 排除作業系統特定的檔案
+.DS_Store

@@ -14,10 +14,52 @@
 -   **前端**: React, TypeScript, Vite, Tailwind CSS
 -   **後端**: Node.js, Express, WebSocket (`ws` library), SQLite
 -   **核心技術**: WebRTC
+-   **容器化**: Docker, Docker Compose
 
 ---
 
-## 在新環境中部署
+## 使用 Docker 部署 (建議方式)
+
+這是在任何支援 Docker 的環境中部署此專案最簡單、最一致的方法。
+
+### 1. 環境準備
+
+-   **Docker**: [安裝 Docker Desktop](https://www.docker.com/products/docker-desktop/) 或 Docker Engine。
+-   **Docker Compose**: 通常已包含在 Docker Desktop 中。
+-   **Git**: 用於複製專案。
+
+### 2. 複製專案並啟動
+
+在您的終端機中執行以下指令：
+
+```bash
+# 複製專案
+git clone https://github.com/s909201/voip-demo-3.git
+cd voip-demo-3
+
+# 使用 Docker Compose 建置並啟動所有服務
+# --build 旗標會確保在首次啟動時建置映像
+docker-compose up --build
+```
+
+### 3. 開始使用
+
+啟動完成後：
+1.  在您的瀏覽器中開啟 `http://localhost`。
+2.  前端應用程式將會載入，並自動連線到在容器中運行的後端服務。
+3.  您可以在另一台電腦或手機的瀏覽器上，透過執行 Docker 的電腦的區域網路 IP (例如 `http://192.168.0.75`) 來存取服務，進行通話測試。
+
+### 4. 停止服務
+
+若要停止所有服務，請在同一個終端機視窗中按下 `Ctrl + C`，或開啟新的終端機視窗並在專案根目錄下執行：
+
+```bash
+docker-compose down
+```
+
+---
+
+## 手動部署
 
 請遵循以下步驟在新電腦上設定並啟動此專案。
 

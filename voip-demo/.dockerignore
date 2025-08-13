@@ -1,0 +1,19 @@
+# 排除 node_modules
+node_modules
+
+# 排除建置產生的 dist 目錄
+dist
+
+# 排除 npm 的偵錯日誌
+npm-debug.log
+
+# 排除本地環境變數檔案
+.env.local
+.env.*.local
+
+# 排除作業系統特定的檔案
+.DS_Store
+
+# 排除測試報告和快取
+/coverage
+.vite-cache
