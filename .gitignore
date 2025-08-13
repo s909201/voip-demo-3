@@ -29,6 +29,10 @@ node_modules/
 
 # Database files
 *.db
+server-ui-demo/voip_demo.db
+
+# Uploads
+server-ui-demo/uploads/
 
 # Task files
 # tasks.json
