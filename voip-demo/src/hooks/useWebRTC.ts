@@ -35,8 +35,10 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
     ],
   };
 
-  const stopRecording = () => {
+  const stopRecording = (shouldUpload: boolean) => {
     if (mediaRecorder.current && mediaRecorder.current.state === 'recording') {
+      // 將上傳決策傳遞給 onstop 事件
+      (mediaRecorder.current as any)._shouldUpload = shouldUpload;
       mediaRecorder.current.stop();
     }
   };
@@ -45,7 +47,7 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
     if (peerConnection.current?.signalingState === 'closed') {
       return;
     }
-    stopRecording();
+    stopRecording(isCaller);
     const target = callerId || currentTarget;
     const time = new Date().toLocaleString();
     if (!isRemote && socket && target) {
@@ -66,13 +68,14 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
       ringtone.current.pause();
       ringtone.current.currentTime = 0;
     }
+
     setLocalStream(null);
     setRemoteStream(null);
     setCallState('idle');
     setCallerId(null);
     setIsCaller(false); // 重置發起通話標記
     incomingOffer.current = null;
-  }, [socket, callerId, currentTarget, localStream]);
+  }, [socket, callerId, currentTarget, localStream, isCaller]);
 
   const startRecording = useCallback(() => {
     const time = new Date().toLocaleString();
@@ -96,11 +99,12 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
       mediaRecorder.current.onstop = async () => {
         const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' });
         audioChunks.current = [];
-        console.log(`[${new Date().toLocaleString()}] [RECORDING] Recording stopped, blob size: ${audioBlob.size}, callId: ${callId.current}, isCaller: ${isCaller}`);
+        const shouldUpload = (mediaRecorder.current as any)._shouldUpload;
+        console.log(`[${new Date().toLocaleString()}] [RECORDING] Recording stopped, blob size: ${audioBlob.size}, callId: ${callId.current}, shouldUpload: ${shouldUpload}`);
         
         if (callId.current && audioBlob.size > 0) {
-          // 雙方都錄音，但只有發起方上傳
-          if (isCaller) {
+          // 根據傳遞的標記決定是否上傳
+          if (shouldUpload) {
             setIsUploading(true);
             setUploadSuccess(null);
             setUploadError(null);
@@ -127,6 +131,7 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
         } else {
           console.log(`[${new Date().toLocaleString()}] [RECORDING] No audio data to save`);
         }
+        mediaRecorder.current = null;
       };
       mediaRecorder.current.start();
       console.log(`[${time}] [RECORDING] Recording started successfully`);
