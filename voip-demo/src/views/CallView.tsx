@@ -104,13 +104,6 @@ const CallView: React.FC = () => {
           <span>📊</span>
           <span>即時監控</span>
         </Link>
-        <Link 
-          to="/history" 
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center space-x-2"
-        >
-          <span>📋</span>
-          <span>通話紀錄</span>
-        </Link>
       </div>
 
       <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-sm" style={{ transform: 'translateY(-100px)' }}>

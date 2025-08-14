@@ -74,22 +74,6 @@ const CallHistoryPage: React.FC = () => {
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold">通話紀錄</h1>
-          <div className="flex space-x-4">
-            <Link 
-              to="/monitor" 
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center space-x-2"
-            >
-              <span>📊</span>
-              <span>即時監控</span>
-            </Link>
-            <Link 
-              to="/" 
-              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center space-x-2"
-            >
-              <span>📞</span>
-              <span>返回通話</span>
-            </Link>
-          </div>
         </div>
         
         {callHistory.length === 0 ? (

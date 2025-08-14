@@ -79,13 +79,6 @@ const MonitorPage: React.FC = () => {
           <h1 className="text-3xl font-bold">通話監控中心</h1>
           <div className="flex space-x-4">
             <Link 
-              to="/history" 
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center space-x-2"
-            >
-              <span>📋</span>
-              <span>通話紀錄</span>
-            </Link>
-            <Link 
               to="/" 
               className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center space-x-2"
             >
