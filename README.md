@@ -50,10 +50,10 @@ cd voip-demo-3
 cd server-ui-demo
 
 # 刪除舊的憑證檔案（如果存在）
-rm -f cert.pem cert-key.pem
+rm -f cert.crt cert-key.pem
 
 # 產生新的 SSL 憑證，包含本機和區域網路 IP
-openssl req -x509 -newkey rsa:4096 -keyout cert-key.pem -out cert.pem -days 365 -nodes \
+openssl req -x509 -newkey rsa:4096 -keyout cert-key.pem -out cert.crt -days 365 -nodes \
   -subj "/C=TW/ST=Taiwan/L=Taipei/O=VoIP Demo/OU=IT Department/CN=192.168.0.75" \
   -addext "subjectAltName=DNS:localhost,DNS:*.localhost,IP:127.0.0.1,IP:192.168.0.75,IP:192.168.248.1,IP:192.168.253.1,IP:172.20.80.1"
 ```
@@ -63,13 +63,22 @@ openssl req -x509 -newkey rsa:4096 -keyout cert-key.pem -out cert.pem -days 365 
 cd server-ui-demo
 
 # 刪除舊的憑證檔案（如果存在）
-Remove-Item cert.pem, cert-key.pem -Force -ErrorAction SilentlyContinue
+Remove-Item cert.crt, cert-key.pem -Force -ErrorAction SilentlyContinue
 
 # 產生新的 SSL 憑證
-openssl req -x509 -newkey rsa:4096 -keyout cert-key.pem -out cert.pem -days 365 -nodes -subj "/C=TW/ST=Taiwan/L=Taipei/O=VoIP Demo/OU=IT Department/CN=192.168.0.75" -addext "subjectAltName=DNS:localhost,DNS:*.localhost,IP:127.0.0.1,IP:192.168.0.75,IP:192.168.248.1,IP:192.168.253.1,IP:172.20.80.1"
+openssl req -x509 -newkey rsa:4096 -keyout cert-key.pem -out cert.crt -days 365 -nodes -subj "/C=TW/ST=Taiwan/L=Taipei/O=VoIP Demo/OU=IT Department/CN=192.168.0.75" -addext "subjectAltName=DNS:localhost,DNS:*.localhost,IP:127.0.0.1,IP:192.168.0.75,IP:192.168.248.1,IP:192.168.253.1,IP:172.20.80.1"
 ```
 
-這個指令會在 `server-ui-demo` 目錄下產生 `cert-key.pem` 和 `cert.pem` 兩個檔案。憑證包含了多個 IP 地址，確保在不同網路環境下都能正常工作。
+**簡化版本（適用於基本開發環境）：**
+```bash
+cd server-ui-demo
+
+# 產生基本的 SSL 憑證
+openssl req -x509 -newkey rsa:4096 -keyout cert-key.pem -out cert.crt -days 365 -nodes \
+  -subj "/C=TW/ST=Taiwan/L=Taipei/O=VoIP Demo/OU=IT Department/CN=localhost"
+```
+
+這個指令會在 `server-ui-demo` 目錄下產生 `cert-key.pem` 和 `cert.crt` 兩個檔案。憑證包含了多個 IP 地址，確保在不同網路環境下都能正常工作。
 
 ### 4. 安裝依賴套件
 
@@ -159,7 +168,7 @@ openssl req -x509 -newkey rsa:4096 -keyout cert-key.pem -out cert.pem -days 365 
 voip-demo-3/
 ├── server-ui-demo/          # 後端伺服器
 │   ├── server.js           # 主要伺服器檔案
-│   ├── cert.pem            # SSL 憑證（需要產生）
+│   ├── cert.crt            # SSL 憑證（需要產生）
 │   ├── cert-key.pem        # SSL 私鑰（需要產生）
 │   └── src/
 │       └── database.js     # 資料庫設定

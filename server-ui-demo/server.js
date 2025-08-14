@@ -157,7 +157,7 @@ app.get('/', (req, res) => {
 // --- HTTPS and WebSocket Server Setup ---
 const serverOptions = {
   key: fs.readFileSync(path.join(__dirname, 'cert-key.pem')),
-  cert: fs.readFileSync(path.join(__dirname, 'cert.pem')),
+  cert: fs.readFileSync(path.join(__dirname, 'cert.crt')),
 };
 
 const server = https.createServer(serverOptions, app);

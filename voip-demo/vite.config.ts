@@ -26,7 +26,7 @@ export default defineConfig({
   server: {
     https: {
       key: fs.readFileSync(path.resolve(__dirname, '../server-ui-demo/cert-key.pem')),
-      cert: fs.readFileSync(path.resolve(__dirname, '../server-ui-demo/cert.pem')),
+      cert: fs.readFileSync(path.resolve(__dirname, '../server-ui-demo/cert.crt')),
     },
     host: true, // 允許來自區域網路的連線
     proxy: {
