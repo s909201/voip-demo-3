@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { useAppContext } from '../contexts/AppContext';
 import useWebRTC from '../hooks/useWebRTC';
 
 interface OnlineUser {
@@ -9,11 +10,18 @@ interface OnlineUser {
 }
 
 const CallView: React.FC = () => {
-  const [username, setUsername] = useState('');
-  const [connectionStatus, setConnectionStatus] = useState('disconnected');
-  const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
-  const [socket, setSocket] = useState<WebSocket | null>(null);
-  const [currentTarget, setCurrentTarget] = useState<string>('');
+  const {
+    username,
+    setUsername,
+    connectionStatus,
+    setConnectionStatus,
+    onlineUsers,
+    setOnlineUsers,
+    socket,
+    setSocket,
+    currentTarget,
+    setCurrentTarget,
+  } = useAppContext();
   const { remoteStream, callState, callerId, startCall, hangUp, answerCall, handleReceiveOffer, handleReceiveAnswer, handleReceiveCandidate } = useWebRTC(socket, username, currentTarget);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
 
@@ -31,7 +39,7 @@ const CallView: React.FC = () => {
       const data = JSON.parse(event.data);
       switch (data.type) {
         case 'user-list':
-          setOnlineUsers(data.users.filter((user: OnlineUser) => user.name !== username));
+          setOnlineUsers(data.users); // 保存所有用戶到全局狀態
           break;
         case 'offer':
           handleReceiveOffer(data.offer, data.sender_voip_id, data.callId);
@@ -137,8 +145,8 @@ const CallView: React.FC = () => {
             className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             disabled={connectionStatus !== 'connected'}
           >
-            {onlineUsers.length > 0 ? (
-              onlineUsers.map((user) => (
+            {onlineUsers.filter(user => user.name !== username).length > 0 ? (
+              onlineUsers.filter(user => user.name !== username).map((user) => (
                 <option key={user.name} value={user.name}>{user.name}</option>
               ))
             ) : (

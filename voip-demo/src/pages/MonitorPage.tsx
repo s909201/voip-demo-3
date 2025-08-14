@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useAppContext } from '../contexts/AppContext';
 
 interface ActiveCall {
   id: number;
@@ -16,11 +17,20 @@ interface OnlineUser {
 }
 
 const MonitorPage: React.FC = () => {
+  const { onlineUsers, setOnlineUsers, username, socket } = useAppContext();
   const [activeCalls, setActiveCalls] = useState<ActiveCall[]>([]);
-  const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
   const [ws, setWs] = useState<WebSocket | null>(null);
 
   useEffect(() => {
+    // 如果已經有全局 socket 連接，就使用它
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      setWs(socket);
+      // 請求用戶列表
+      socket.send(JSON.stringify({ type: 'request-user-list' }));
+      return;
+    }
+
+    // 否則創建新的 WebSocket 連接用於監控
     const websocket = new WebSocket('wss://192.168.0.75:8443');
     
     websocket.onopen = () => {
@@ -53,9 +63,32 @@ const MonitorPage: React.FC = () => {
     setWs(websocket);
 
     return () => {
-      websocket.close();
+      // 只有在不是全局 socket 時才關閉
+      if (websocket !== socket) {
+        websocket.close();
+      }
     };
-  }, []);
+  }, [socket, setOnlineUsers]);
+
+  // 監聽全局 socket 的消息（如果使用全局 socket）
+  useEffect(() => {
+    if (!socket || socket !== ws) return;
+
+    const messageHandler = (event: MessageEvent) => {
+      const data = JSON.parse(event.data);
+      switch (data.type) {
+        case 'call-status':
+          setActiveCalls(data.calls);
+          break;
+      }
+    };
+
+    socket.addEventListener('message', messageHandler);
+
+    return () => {
+      socket.removeEventListener('message', messageHandler);
+    };
+  }, [socket, ws]);
 
   const formatDuration = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
