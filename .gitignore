@@ -26,6 +26,7 @@ node_modules/
 
 # SSL Certificates
 *.pem
+*.crt
 
 # Database files
 *.db
