@@ -188,6 +188,14 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
 
     setIsCaller(true); // 標記為發起通話方
     setCallState('calling');
+
+    // 播放撥出音效
+    if (!ringtone.current) {
+      ringtone.current = new Audio('/Cat-iPhone-ringtone.wav');
+      ringtone.current.loop = true;
+    }
+    ringtone.current.play().catch(error => console.error("Ringtone play failed:", error));
+
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     setLocalStream(stream);
     stream.getTracks().forEach(track => peerConnection.current!.addTrack(track, stream));
@@ -269,6 +277,12 @@ const useWebRTC = (socket: WebSocket | null, username: string, currentTarget: st
       const time = new Date().toLocaleString();
       console.log(`[${time}] [SIGNALING] Received answer from: ${callerId || currentTarget}, callId: ${receivedCallId}`);
       
+      // 停止撥出音效
+      if (ringtone.current) {
+        ringtone.current.pause();
+        ringtone.current.currentTime = 0;
+      }
+
       // 更新 callId（發起方在這裡接收到後端的數據庫 callId）
       if (receivedCallId) {
         callId.current = String(receivedCallId);
